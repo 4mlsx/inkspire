@@ -18,25 +18,33 @@ function randomFallbackQuote() {
 }
 
 async function fetchQuote() {
+  // Quotable (api.quotable.io) shut down, so quotes now come from ZenQuotes.
+  // ZenQuotes returns [{ q, a, h }] — the quote text is in `q`, the author in `a`.
+  // The request times out after 5 seconds so a stalled API can't leave the page blank.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
   try {
-    // Quotable (api.quotable.io) shut down, so quotes now come from ZenQuotes.
-    // ZenQuotes returns [{ q, a, h }] — the quote text is in `q`, the author in `a`.
-    const response = await fetch('https://zenquotes.io/api/random');
+    const response = await fetch('https://zenquotes.io/api/random', { signal: controller.signal });
     const data = await response.json();
     const quote = Array.isArray(data) ? data[0] : data;
     if (!quote || !quote.q) {
       throw new Error('Unexpected quote response');
     }
     return { content: quote.q, author: quote.a };
-  } catch (error) {
-    console.error('Error:', error);
-    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
 function updateQuote() {
   const quoteElement = document.getElementById('quote');
   const authorElement = document.getElementById('author');
+
+  // Show a built-in quote right away so the page is never blank,
+  // then replace it with a fresh one from the API when it arrives.
+  const fallback = randomFallbackQuote();
+  quoteElement.textContent = fallback.content;
+  authorElement.textContent = `— ${fallback.author}`;
 
   fetchQuote()
     .then((data) => {
@@ -45,10 +53,6 @@ function updateQuote() {
     })
     .catch((error) => {
       console.error('Error:', error);
-      // If the API is unreachable, show a built-in quote so the page never goes blank again.
-      const fallback = randomFallbackQuote();
-      quoteElement.textContent = fallback.content;
-      authorElement.textContent = `— ${fallback.author}`;
     });
 }
 
